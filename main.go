@@ -134,6 +134,7 @@ func getUserID(apiToken, userEmail string) (string, error) {
 	return data.User.ID, nil
 }
 
+// TODO: add proper paging to ensure all public channels are retrieved
 func getPublicChannels(apiToken string) (map[string]string, error) {
 	// query list of public channels
 	resp, err := http.Get(conversationsListURL + fmt.Sprintf("?token=%s&exclude_archived=true&limit=1000", apiToken))
