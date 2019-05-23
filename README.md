@@ -23,7 +23,7 @@ Enjoy!
 The user with email `steph@curry.com` should be invited to channels `foo`, `bar`, and `baz`!
 
 ## Implementation
-Initially, I figured this script would be a simple loop that invoked some API to invite a user to a channel.  It turns out this API endpoint ([`conversations.invite`](https://api.slack.com/methods/conversations.invite)) expects the user ID (instead of username) and channel ID (instead of channel name). Furthermore, there isn't a way to lookup a user by username (only by email).  And there's no way to look up a single channel, except by channel ID (chicken and egg).
+Initially, I figured this script would be a simple loop that invoked some API to invite a user to a channel.  It turns out this API endpoint ([`conversations.invite`](https://api.slack.com/methods/conversations.invite)) expects the user ID (instead of username) and channel ID (instead of channel name).  Problem is, it's not very straightforward to get user and channel IDs. There isn't a way to lookup a user by username (only by email).  And there's no way to look up a single channel, unless you have the channel ID already (chicken and egg).
 
 For these reasons, I wrote the script like so:
 1. [Look up](https://api.slack.com/methods/users.lookupByEmail) the Slack user ID by email.
