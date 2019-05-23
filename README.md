@@ -13,7 +13,9 @@ Enjoy!
     - `channels.read`
     - `channels.write`
 3. Install app to your workspace which will generate a new OAuth Access Token
-4. Install this script via `go get github.com/jamietsao/slack-multi-channel-invite`
+4. Download script:
+    - If you have Go installed: `go get github.com/jamietsao/slack-multi-channel-invite`
+    - Else download the binary directly: https://github.com/jamietsao/slack-multi-channel-invite/releases
 5. Run script:
 
 `slack-multi-channel-invite -api_token=<oauth-access-token> -channels=foo,bar,baz -user_email=steph@curry.com`
