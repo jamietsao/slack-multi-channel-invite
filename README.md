@@ -8,24 +8,28 @@ Enjoy!
 ## Instructions
 1. [Create](https://api.slack.com/apps) a Slack App for your workspace.
 2. Add the following permission scopes to your app:
-    - `users.read`
-    - `users.read.email`
-    - `channels.read`
-    - `channels.write`
+    - `users:read`
+    - `users:read.email`
+    - `channels:read`
+    - `channels:write`
+    - `groups:read` (only if inviting to private channels)
+    - `groups:write` (only if inviting to private channels)
 3. Install app to your workspace which will generate a new OAuth Access Token
 4. Download script:
     - If you have Go installed: `go get github.com/jamietsao/slack-multi-channel-invite`
     - Else download the binary directly: https://github.com/jamietsao/slack-multi-channel-invite/releases
 5. Run script:
 
-`slack-multi-channel-invite -api_token=<oauth-access-token> -channels=foo,bar,baz -user_email=steph@curry.com`
+`slack-multi-channel-invite -api_token=<oauth-access-token> -channels=foo,bar,baz -user_email=steph@curry.com -private=<true|false>`
 
 The user with email `steph@curry.com` should be invited to channels `foo`, `bar`, and `baz`!
+
+_* Set `private` flag to `true` if you want to invite users to private channels.  As noted above, this will require the additional permission scopes of `groups:read` and `groups:write`_
 
 ## Implementation
 Initially, I figured this script would be a simple loop that invoked some API to invite a user to a channel.  It turns out this API endpoint ([`conversations.invite`](https://api.slack.com/methods/conversations.invite)) expects the user ID (instead of username) and channel ID (instead of channel name).  Problem is, it's not very straightforward to get user and channel IDs. There isn't a way to lookup a user by username (only by email).  And there's no way to look up a single channel, unless you have the channel ID already (chicken and egg).
 
 For these reasons, I wrote the script like so:
 1. [Look up](https://api.slack.com/methods/users.lookupByEmail) the Slack user ID by email.
-2. [Query](https://api.slack.com/methods/conversations.list) all public channels in the workspace and create a name -> ID mapping.
+2. [Query](https://api.slack.com/methods/conversations.list) all public (or private) channels in the workspace and create a name -> ID mapping.
 3. For each of the given channels, [invite](https://api.slack.com/methods/conversations.invite) the user to the channel using the user ID and channel ID from steps 1 & 2.
