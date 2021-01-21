@@ -94,13 +94,13 @@ func main() {
 	}
 
 	// get all channels
-	channelNameToIDMap, err := getChannels(apiToken, private)
+	channelNameToIDMap, err := getChannels(apiToken, private, debug)
 	if err != nil {
 		panic(err)
 	}
 
 	if debug {
-		fmt.Printf("# of channels retrieved: %d\n", len(channelNameToIDMap))
+		fmt.Printf("Total # of channels retrieved: %d\n", len(channelNameToIDMap))
 	}
 
 	// invite user to each channel
@@ -160,44 +160,57 @@ func getUserID(apiToken, userEmail string) (string, error) {
 	return data.User.ID, nil
 }
 
-// TODO: add proper paging to ensure all channels are retrieved
-func getChannels(apiToken string, private bool) (map[string]string, error) {
+func getChannels(apiToken string, private bool, debug bool) (map[string]string, error) {
 
 	channelType := "public_channel"
 	if private {
 		channelType = "private_channel"
 	}
 
-	// query list of channels
-	resp, err := http.Get(conversationsListURL + fmt.Sprintf("?token=%s&exclude_archived=true&limit=1000&types=%s", apiToken, channelType))
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
+	nameToID := make(map[string]string)
 
-	if resp.StatusCode != http.StatusOK {
-		err := printErrorResponseBody(resp)
+	var nextCursor string
+	for {
+		// query list of channels
+		resp, err := http.Get(conversationsListURL + fmt.Sprintf("?token=%s&cursor=%s&exclude_archived=true&limit=200&types=%s", apiToken, nextCursor, channelType))
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			err := printErrorResponseBody(resp)
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("Non-200 status code (%d)", resp.StatusCode)
+		}
+
+		var data conversationsListResponse
+		err = json.NewDecoder(resp.Body).Decode(&data)
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("Non-200 status code (%d)", resp.StatusCode)
-	}
 
-	var data conversationsListResponse
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		return nil, err
-	}
+		if !data.Ok {
+			fmt.Printf("conversationsListResponse: %+v", data)
+			return nil, fmt.Errorf("Non-ok response while querying list of channels")
+		}
 
-	if !data.Ok {
-		fmt.Printf("conversationsListResponse: %+v", data)
-		return nil, fmt.Errorf("Non-ok response while querying list of channels")
-	}
+		if debug {
+			fmt.Printf("# of channels returned in page: %d\n", len(data.Channels))
+		}
 
-	// create map of channel names to IDs
-	nameToID := make(map[string]string)
-	for _, channel := range data.Channels {
-		nameToID[channel.Name] = channel.ID
+		// map of channel names to IDs
+		for _, channel := range data.Channels {
+			nameToID[channel.Name] = channel.ID
+		}
+
+		// paginate if necessary
+		nextCursor = data.ResponseMetadata.NextCursor
+		if nextCursor == "" {
+			break
+		}
 	}
 
 	return nameToID, nil
