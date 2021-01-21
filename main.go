@@ -22,6 +22,9 @@ type (
 		Ok               bool             `json:"ok"`
 		Channels         []channel        `json:"channels"`
 		ResponseMetadata responseMetadata `json:"response_metadata"`
+		Error            string           `json:error`
+		Needed           string           `json:needed`
+		Provided         string           `json:provided`
 	}
 
 	channel struct {
@@ -58,17 +61,21 @@ type (
 // This script invites the given user to the given list of channels on Slack.
 // Due to the oddness of the Slack API, this is accomplished via these steps:
 // 1) Look up the Slack user ID by email
-// 2) Query all public channels in the workspace and create a name -> ID mapping
+// 2) Query all public (private if 'private' flag is set to true) channels in the workspace and create a name -> ID mapping
 // 3) For each of the given channels, invite the user (user ID) to the channel (channel ID)
 func main() {
 	var apiToken string
 	var userEmail string
 	var channelsArg string
+	var private bool
+	var debug bool
 
 	// parse flags
 	flag.StringVar(&apiToken, "api_token", "", "Slack OAuth Access Token")
 	flag.StringVar(&userEmail, "user_email", "", "Email of Slack user to invite")
 	flag.StringVar(&channelsArg, "channels", "", "Comma separated list of channels to invite user to")
+	flag.BoolVar(&private, "private", false, "Boolean flag to enable private channel invitations (requires OAuth scopes 'groups:read' and 'groups:write')")
+	flag.BoolVar(&debug, "debug", false, "Enables debug logging when set to true")
 	flag.Parse()
 
 	if apiToken == "" || userEmail == "" || channelsArg == "" {
@@ -82,24 +89,43 @@ func main() {
 		panic(err)
 	}
 
-	// get all public channels
-	channelNameToIDMap, err := getPublicChannels(apiToken)
+	if debug {
+		fmt.Printf("User ID for '%s': %s\n", userEmail, userID)
+	}
+
+	// get all channels
+	channelNameToIDMap, err := getChannels(apiToken, private, debug)
 	if err != nil {
 		panic(err)
+	}
+
+	if debug {
+		fmt.Printf("Total # of channels retrieved: %d\n", len(channelNameToIDMap))
 	}
 
 	// invite user to each channel
 	channels := strings.Split(channelsArg, ",")
 	for _, channel := range channels {
 		channelID := channelNameToIDMap[channel]
-
-		err := inviteUserToChannel(apiToken, userID, userEmail, channelID, channel)
-		if err != nil {
-			fmt.Printf("Error while inviting %s to %s: %s\n", userEmail, channel, err)
+		if channelID == "" {
+			fmt.Printf("Channel '%s' not found -- skipping\n", channel)
+			continue
 		}
+
+		if debug {
+			fmt.Printf("Inviting user %s (%s) to channel %s (%s)\n", userEmail, userID, channel, channelID)
+		}
+
+		err := inviteUserToChannel(apiToken, userID, channelID)
+		if err != nil {
+			fmt.Printf("Error while inviting %s (%s) to %s (%s): %s\n", userEmail, userID, channel, channelID, err)
+			continue
+		}
+
+		fmt.Printf("User %s invited to '%s'\n", userEmail, channel)
 	}
 
-	fmt.Println("All done! You're welcome =)")
+	fmt.Println("\nAll done! You're welcome =)")
 }
 
 func getUserID(apiToken, userEmail string) (string, error) {
@@ -134,44 +160,63 @@ func getUserID(apiToken, userEmail string) (string, error) {
 	return data.User.ID, nil
 }
 
-// TODO: add proper paging to ensure all public channels are retrieved
-func getPublicChannels(apiToken string) (map[string]string, error) {
-	// query list of public channels
-	resp, err := http.Get(conversationsListURL + fmt.Sprintf("?token=%s&exclude_archived=true&limit=1000", apiToken))
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
+func getChannels(apiToken string, private bool, debug bool) (map[string]string, error) {
 
-	if resp.StatusCode != http.StatusOK {
-		err := printErrorResponseBody(resp)
+	channelType := "public_channel"
+	if private {
+		channelType = "private_channel"
+	}
+
+	nameToID := make(map[string]string)
+
+	var nextCursor string
+	for {
+		// query list of channels
+		resp, err := http.Get(conversationsListURL + fmt.Sprintf("?token=%s&cursor=%s&exclude_archived=true&limit=200&types=%s", apiToken, nextCursor, channelType))
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			err := printErrorResponseBody(resp)
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("Non-200 status code (%d)", resp.StatusCode)
+		}
+
+		var data conversationsListResponse
+		err = json.NewDecoder(resp.Body).Decode(&data)
 		if err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("Non-200 status code (%d)", resp.StatusCode)
-	}
 
-	var data conversationsListResponse
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		return nil, err
-	}
+		if !data.Ok {
+			fmt.Printf("conversationsListResponse: %+v", data)
+			return nil, fmt.Errorf("Non-ok response while querying list of channels")
+		}
 
-	if !data.Ok {
-		fmt.Printf("conversationsListResponse: %+v", data)
-		return nil, fmt.Errorf("Non-ok response while querying list of public channels")
-	}
+		if debug {
+			fmt.Printf("# of channels returned in page: %d\n", len(data.Channels))
+		}
 
-	// create map of channel names to IDs
-	nameToID := make(map[string]string)
-	for _, channel := range data.Channels {
-		nameToID[channel.Name] = channel.ID
+		// map of channel names to IDs
+		for _, channel := range data.Channels {
+			nameToID[channel.Name] = channel.ID
+		}
+
+		// paginate if necessary
+		nextCursor = data.ResponseMetadata.NextCursor
+		if nextCursor == "" {
+			break
+		}
 	}
 
 	return nameToID, nil
 }
 
-func inviteUserToChannel(apiToken, userID, userEmail, channelID, channelName string) error {
+func inviteUserToChannel(apiToken, userID, channelID string) error {
 	httpClient := &http.Client{}
 
 	reqBody, err := json.Marshal(conversationsInviteRequest{
@@ -215,7 +260,6 @@ func inviteUserToChannel(apiToken, userID, userEmail, channelID, channelName str
 		return fmt.Errorf("Non-ok response while inviting user to channel")
 	}
 
-	fmt.Printf("User %s invited to %s\n", userEmail, channelName)
 	return nil
 }
 
