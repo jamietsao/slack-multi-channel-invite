@@ -1,7 +1,7 @@
 # slack-multi-channel-invite
-Have you ever googled `"slack invite user to multiple channels"`?  Yeah, me too.  I do this every time a new engineer joins my team, and inevitably end up inviting said engineer to each Slack channel manually.  I got tired of this, so I rolled up my sleeves and whipped up this script in a couple of hours.
+Have you ever googled `"slack invite user to multiple channels"`?  Yeah, me too.  I do this every time a new engineer joins my team, and I inevitably end up inviting said engineer to each Slack channel manually.  I got tired of this, so I rolled up my sleeves and whipped up this script.
 
-I assume Slack will eventually add this ability.  Until then, hopefully you can save some time by using this script.
+I assume Slack will eventually add this ability.  Until then, hopefully you can save some time by using this.
 
 Enjoy!
 
@@ -20,16 +20,16 @@ Enjoy!
     - Else download the binary directly: https://github.com/jamietsao/slack-multi-channel-invite/releases
 5. Run script:
 
-`slack-multi-channel-invite -api_token=<oauth-access-token> -channels=foo,bar,baz -user_email=steph@curry.com -private=<true|false>`
+`slack-multi-channel-invite -api_token=<oauth-access-token> -emails=steph@warriors.com,klay@warriors.com -channels=dubnation,splashbrothers,thetown -private=<true|false>`
 
-The user with email `steph@curry.com` should be invited to channels `foo`, `bar`, and `baz`!
+The users with emails `steph@warriors.com` and `klay@warriors.com` should be invited to channels `dubnation`, `splashbrothers`, and `thetown`!
 
 _* Set `private` flag to `true` if you want to invite users to private channels.  As noted above, this will require the additional permission scopes of `groups:read` and `groups:write`_
 
 ## Implementation
-Initially, I figured this script would be a simple loop that invoked some API to invite a user to a channel.  It turns out this API endpoint ([`conversations.invite`](https://api.slack.com/methods/conversations.invite)) expects the user ID (instead of username) and channel ID (instead of channel name).  Problem is, it's not very straightforward to get user and channel IDs. There isn't a way to lookup a user by username (only by email).  And there's no way to look up a single channel, unless you have the channel ID already (chicken and egg).
+Initially, I figured this script would be a simple loop that invoked some API to invite users to a channel.  It turns out this API endpoint ([`conversations.invite`](https://api.slack.com/methods/conversations.invite)) expects the user ID (instead of username) and channel ID (instead of channel name).  Problem is, it's not very straightforward to get user and channel IDs. There isn't a way to lookup a user by username (only by email).  And there's no way to look up a single channel, unless you have the channel ID already (chicken and egg).
 
 For these reasons, I wrote the script like so:
-1. [Look up](https://api.slack.com/methods/users.lookupByEmail) the Slack user ID by email.
+1. [Look up](https://api.slack.com/methods/users.lookupByEmail) Slack user IDs for all given emails.
 2. [Query](https://api.slack.com/methods/conversations.list) all public (or private) channels in the workspace and create a name -> ID mapping.
-3. For each of the given channels, [invite](https://api.slack.com/methods/conversations.invite) the user to the channel using the user ID and channel ID from steps 1 & 2.
+3. For each of the given channels, [invite](https://api.slack.com/methods/conversations.invite) the users to the channel using the user IDs and channel ID from steps 1 & 2.
