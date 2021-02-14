@@ -58,39 +58,43 @@ type (
 	}
 )
 
-// This script invites the given user to the given list of channels on Slack.
+// This script invites the given users to the given channels on Slack.
 // Due to the oddness of the Slack API, this is accomplished via these steps:
-// 1) Look up the Slack user ID by email
+// 1) Look up Slack user IDs by email
 // 2) Query all public (private if 'private' flag is set to true) channels in the workspace and create a name -> ID mapping
-// 3) For each of the given channels, invite the user (user ID) to the channel (channel ID)
+// 3) For each of the given channels, invite the users (user IDs) to the channel (channel ID)
 func main() {
 	var apiToken string
-	var userEmail string
+	var emails string
 	var channelsArg string
 	var private bool
 	var debug bool
 
 	// parse flags
 	flag.StringVar(&apiToken, "api_token", "", "Slack OAuth Access Token")
-	flag.StringVar(&userEmail, "user_email", "", "Email of Slack user to invite")
-	flag.StringVar(&channelsArg, "channels", "", "Comma separated list of channels to invite user to")
+	flag.StringVar(&emails, "emails", "", "Comma separated list of Slack user emails to invite")
+	flag.StringVar(&channelsArg, "channels", "", "Comma separated list of channels to invite users to")
 	flag.BoolVar(&private, "private", false, "Boolean flag to enable private channel invitations (requires OAuth scopes 'groups:read' and 'groups:write')")
 	flag.BoolVar(&debug, "debug", false, "Enables debug logging when set to true")
 	flag.Parse()
 
-	if apiToken == "" || userEmail == "" || channelsArg == "" {
+	if apiToken == "" || emails == "" || channelsArg == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	// lookup user by email
-	userID, err := getUserID(apiToken, userEmail)
-	if err != nil {
-		panic(err)
-	}
+	// lookup users by email
+	fmt.Printf("\nLooking up users ...\n")
+	var userIDs []string
+	for _, email := range strings.Split(emails, ",") {
+		userID, err := getUserID(apiToken, email)
+		if err != nil {
+			fmt.Printf("Error while looking up user with email %s: %s\n", email, err)
+			continue
+		}
 
-	if debug {
-		fmt.Printf("User ID for '%s': %s\n", userEmail, userID)
+		fmt.Printf("Valid user (ID: %s) found for '%s'\n", userID, email)
+		userIDs = append(userIDs, userID)
 	}
 
 	// get all channels
@@ -100,10 +104,11 @@ func main() {
 	}
 
 	if debug {
-		fmt.Printf("Total # of channels retrieved: %d\n", len(channelNameToIDMap))
+		fmt.Printf("DEBUG: Total # of channels retrieved: %d\n", len(channelNameToIDMap))
 	}
 
-	// invite user to each channel
+	// invite users to each channel
+	fmt.Printf("\nInviting users to channels ...\n")
 	channels := strings.Split(channelsArg, ",")
 	for _, channel := range channels {
 		channelID := channelNameToIDMap[channel]
@@ -112,17 +117,13 @@ func main() {
 			continue
 		}
 
-		if debug {
-			fmt.Printf("Inviting user %s (%s) to channel %s (%s)\n", userEmail, userID, channel, channelID)
-		}
-
-		err := inviteUserToChannel(apiToken, userID, channelID)
+		err := inviteUsersToChannel(apiToken, userIDs, channelID)
 		if err != nil {
-			fmt.Printf("Error while inviting %s (%s) to %s (%s): %s\n", userEmail, userID, channel, channelID, err)
+			fmt.Printf("Error while inviting users to %s (%s): %s\n", channel, channelID, err)
 			continue
 		}
 
-		fmt.Printf("User %s invited to '%s'\n", userEmail, channel)
+		fmt.Printf("Users invited to '%s'\n", channel)
 	}
 
 	fmt.Println("\nAll done! You're welcome =)")
@@ -198,7 +199,7 @@ func getChannels(apiToken string, private bool, debug bool) (map[string]string, 
 		}
 
 		if debug {
-			fmt.Printf("# of channels returned in page: %d\n", len(data.Channels))
+			fmt.Printf("DEBUG: # of channels returned in page: %d\n", len(data.Channels))
 		}
 
 		// map of channel names to IDs
@@ -216,12 +217,12 @@ func getChannels(apiToken string, private bool, debug bool) (map[string]string, 
 	return nameToID, nil
 }
 
-func inviteUserToChannel(apiToken, userID, channelID string) error {
+func inviteUsersToChannel(apiToken string, userIDs []string, channelID string) error {
 	httpClient := &http.Client{}
 
 	reqBody, err := json.Marshal(conversationsInviteRequest{
 		ChannelID: channelID,
-		UserIDs:   userID,
+		UserIDs:   strings.Join(userIDs, ","),
 	})
 	if err != nil {
 		return err
