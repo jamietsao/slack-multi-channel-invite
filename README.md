@@ -7,20 +7,20 @@ Enjoy!
 
 ## Instructions
 1. [Create](https://api.slack.com/apps) a Slack App for your workspace.
-2. Add the following permission scopes to your app:
+2. Add the following permission scopes to a user token (bot tokens aren't allowed `channels:write`):
     - `users:read`
     - `users:read.email`
     - `channels:read`
     - `channels:write`
     - `groups:read` (only if inviting to private channels)
     - `groups:write` (only if inviting to private channels)
-3. Install app to your workspace which will generate a new OAuth Access Token
+3. Install app to your workspace which will generate a new User OAuth token
 4. Download script:
     - If you have Go installed: `go get github.com/jamietsao/slack-multi-channel-invite`
     - Else download the binary directly: https://github.com/jamietsao/slack-multi-channel-invite/releases
 5. Run script:
 
-`slack-multi-channel-invite -api_token=<oauth-access-token> -emails=steph@warriors.com,klay@warriors.com -channels=dubnation,splashbrothers,thetown -private=<true|false>`
+`slack-multi-channel-invite -api_token=<user-oauth-token> -emails=steph@warriors.com,klay@warriors.com -channels=dubnation,splashbrothers,thetown -private=<true|false>`
 
 The users with emails `steph@warriors.com` and `klay@warriors.com` should be invited to channels `dubnation`, `splashbrothers`, and `thetown`!
 
