@@ -97,6 +97,11 @@ func main() {
 		userIDs = append(userIDs, userID)
 	}
 
+	if len(userIDs) == 0 {
+		fmt.Println("\nNo users found - aborting")
+		return
+	}
+
 	// get all channels
 	channelNameToIDMap, err := getChannels(apiToken, private, debug)
 	if err != nil {
@@ -130,11 +135,20 @@ func main() {
 }
 
 func getUserID(apiToken, userEmail string) (string, error) {
+	httpClient := &http.Client{}
 
 	// lookup user by email
-	resp, err := http.Get(usersLookupByEmailURL + fmt.Sprintf("?token=%s&email=%s", apiToken, userEmail))
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(usersLookupByEmailURL+"?email=%s", userEmail), nil)
 	if err != nil {
-		panic(err)
+		return "", err
+	}
+
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiToken))
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -170,12 +184,21 @@ func getChannels(apiToken string, private bool, debug bool) (map[string]string, 
 
 	nameToID := make(map[string]string)
 
+	httpClient := &http.Client{}
 	var nextCursor string
 	for {
 		// query list of channels
-		resp, err := http.Get(conversationsListURL + fmt.Sprintf("?token=%s&cursor=%s&exclude_archived=true&limit=200&types=%s", apiToken, nextCursor, channelType))
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(conversationsListURL+"?cursor=%s&exclude_archived=true&limit=200&types=%s", nextCursor, channelType), nil)
 		if err != nil {
-			panic(err)
+			return nil, err
+		}
+
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiToken))
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, err
 		}
 		defer resp.Body.Close()
 
@@ -228,15 +251,15 @@ func inviteUsersToChannel(apiToken string, userIDs []string, channelID string) e
 		return err
 	}
 
-	request, err := http.NewRequest(http.MethodPost, conversationsInviteURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequest(http.MethodPost, conversationsInviteURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return err
 	}
 
-	request.Header.Add("Content-Type", "application/json")
-	request.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiToken))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiToken))
 
-	resp, err := httpClient.Do(request)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
