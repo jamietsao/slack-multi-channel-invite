@@ -13,8 +13,12 @@ import (
 
 const (
 	conversationsInviteURL = "https://slack.com/api/conversations.invite"
+	conversationsKickURL   = "https://slack.com/api/conversations.kick"
 	conversationsListURL   = "https://slack.com/api/conversations.list"
 	usersLookupByEmailURL  = "https://slack.com/api/users.lookupByEmail"
+
+	actionAdd    = "add"
+	actionRemove = "remove"
 )
 
 type (
@@ -46,6 +50,16 @@ type (
 		Error string `json:"error"`
 	}
 
+	conversationsKickRequest struct {
+		ChannelID string `json:"channel"`
+		UserID    string `json:"user"`
+	}
+
+	conversationsKickResponse struct {
+		Ok    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+
 	usersLookupByEmailResponse struct {
 		Ok    bool   `json:"ok"`
 		User  user   `json:"user"`
@@ -65,6 +79,7 @@ type (
 // 3) For each of the given channels, invite the users (user IDs) to the channel (channel ID)
 func main() {
 	var apiToken string
+	var action string
 	var emails string
 	var channelsArg string
 	var private bool
@@ -72,13 +87,14 @@ func main() {
 
 	// parse flags
 	flag.StringVar(&apiToken, "api_token", "", "Slack OAuth Access Token")
+	flag.StringVar(&action, "action", "add", "'add' to invite users, 'remove' to remove users")
 	flag.StringVar(&emails, "emails", "", "Comma separated list of Slack user emails to invite")
 	flag.StringVar(&channelsArg, "channels", "", "Comma separated list of channels to invite users to")
 	flag.BoolVar(&private, "private", false, "Boolean flag to enable private channel invitations (requires OAuth scopes 'groups:read' and 'groups:write')")
 	flag.BoolVar(&debug, "debug", false, "Enables debug logging when set to true")
 	flag.Parse()
 
-	if apiToken == "" || emails == "" || channelsArg == "" {
+	if apiToken == "" || emails == "" || channelsArg == "" || (action != actionAdd && action != actionRemove) {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -112,8 +128,12 @@ func main() {
 		fmt.Printf("DEBUG: Total # of channels retrieved: %d\n", len(channelNameToIDMap))
 	}
 
-	// invite users to each channel
-	fmt.Printf("\nInviting users to channels ...\n")
+	// invite/remove users to each channel
+	if action == actionAdd {
+		fmt.Printf("\nInviting users to channels ...\n")
+	} else {
+		fmt.Printf("\nRemoving users from channels ...\n")
+	}
 	channels := strings.Split(channelsArg, ",")
 	for _, channel := range channels {
 		channelID := channelNameToIDMap[channel]
@@ -122,13 +142,25 @@ func main() {
 			continue
 		}
 
-		err := inviteUsersToChannel(apiToken, userIDs, channelID)
-		if err != nil {
-			fmt.Printf("Error while inviting users to %s (%s): %s\n", channel, channelID, err)
-			continue
+		if action == actionAdd {
+			err := inviteUsersToChannel(apiToken, userIDs, channelID)
+			if err != nil {
+				fmt.Printf("Error while inviting users to %s (%s): %s\n", channel, channelID, err)
+				continue
+			}
+		} else {
+			err := removeUsersFromChannel(apiToken, userIDs, channelID, debug)
+			if err != nil {
+				fmt.Printf("Error while removing users from %s (%s): %s\n", channel, channelID, err)
+				continue
+			}
 		}
 
-		fmt.Printf("Users invited to '%s'\n", channel)
+		if action == actionAdd {
+			fmt.Printf("Users invited to '%s'\n", channel)
+		} else {
+			fmt.Printf("Users removed from '%s'\n", channel)
+		}
 	}
 
 	fmt.Println("\nAll done! You're welcome =)")
@@ -282,6 +314,67 @@ func inviteUsersToChannel(apiToken string, userIDs []string, channelID string) e
 	if !data.Ok {
 		fmt.Printf("conversationsInviteResponse: %+v\n", data)
 		return fmt.Errorf("Non-ok response while inviting user to channel")
+	}
+
+	return nil
+}
+
+func removeUsersFromChannel(apiToken string, userIDs []string, channelID string, debug bool) error {
+	// API only supports removing users one at a time ...
+	for _, userID := range userIDs {
+		err := removeUserFromChannel(apiToken, userID, channelID)
+		if err != nil {
+			if debug {
+				fmt.Printf("DEBUG: Error while removing user %s from channel %s: %s\n", userID, channelID, err)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func removeUserFromChannel(apiToken string, userID string, channelID string) error {
+	httpClient := &http.Client{}
+
+	reqBody, err := json.Marshal(conversationsKickRequest{
+		ChannelID: channelID,
+		UserID:    userID,
+	})
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, conversationsKickURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", apiToken))
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := printErrorResponseBody(resp)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("Non-200 status code: (%d)", resp.StatusCode)
+	}
+
+	var data conversationsKickResponse
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	if err != nil {
+		return err
+	}
+
+	if !data.Ok {
+		fmt.Printf("conversationsKickResponse: %+v\n", data)
+		return fmt.Errorf("Non-ok response while removing user from channel")
 	}
 
 	return nil
