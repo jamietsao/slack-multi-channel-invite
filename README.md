@@ -26,6 +26,12 @@ The users with emails `steph@warriors.com` and `klay@warriors.com` should be inv
 
 _* Set `private` flag to `true` if you want to invite users to private channels.  As noted above, this will require the additional permission scopes of `groups:read` and `groups:write`_
 
+#### Want to remove users from channels?
+Simply set the optional `action` flag to `remove` (`add` is the default):
+
+`slack-multi-channel-invite -api_token=<user-oauth-token> -action=remove -emails=kd@warriors.com -channels=dubnation,warriors -private=<true|false>`
+
+
 ## Implementation
 Initially, I figured this script would be a simple loop that invoked some API to invite users to a channel.  It turns out this API endpoint ([`conversations.invite`](https://api.slack.com/methods/conversations.invite)) expects the user ID (instead of username) and channel ID (instead of channel name).  Problem is, it's not very straightforward to get user and channel IDs. There isn't a way to lookup a user by username (only by email).  And there's no way to look up a single channel, unless you have the channel ID already (chicken and egg).
 
