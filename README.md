@@ -16,7 +16,7 @@ Enjoy!
     - `groups:write` (only if inviting to private channels)
 3. Install app to your workspace which will generate a new User OAuth token
 4. Download script:
-    - If you have Go installed: `go get github.com/jamietsao/slack-multi-channel-invite`
+    - If you have Go installed: `go install github.com/jamietsao/slack-multi-channel-invite@latest`
     - Else download the binary directly: https://github.com/jamietsao/slack-multi-channel-invite/releases
 5. Run script:
 
